@@ -9,136 +9,190 @@
 // Note: define ENABLE_DEBUG to enable debugging output to stderr
 
 
-struct Edge {
-    int dest;                   // ‘node_char’s, not indices
-    int max_flux, current_flux;
-    int rev_idx;                // index of the corresponding dest
-                                // node’s edge
+// Id, local to a particular Vertex. Might be an iterator type if Edges
+// are kept in a container whose insertion doesn’t invalidate them.
+using edge_id_t = int;
 
-    int avail() const { return std::abs(max_flux) - current_flux; }
+struct Edge {
+    int dest;                   // ‘vertex_char’s, not indices
+    int max_capacity, current_flux;
+    edge_id_t rev;              // id of the corresponding dest’s edge
+
+    int remaining_capacity() const
+    {
+        return std::abs(max_capacity) - current_flux;
+    }
 
     // We don’t want to write out auxiliary reverse edges which have
-    // negative max_flux
-    bool real() const { return max_flux > 0; }
+    // negative max_capacity
+    bool is_real() const
+    {
+        return max_capacity > 0;
+    }
 };
 
-struct Node {
+class Vertex {
     std::vector<Edge> edges;
 
-    Edge &edge(int e) { return edges[e]; }
-    const Edge &edge(int e) const { return edges[e]; }
+public:
+    Edge &edge(edge_id_t e)
+    {
+        return edges[e];
+    }
+    const Edge &edge(edge_id_t e) const
+    {
+        return edges[e];
+    }
 
-    int edges_count() const { return edges.size(); }
+    edge_id_t add_edge()
+    {
+        edges.push_back(Edge{});
+        return edges.size() - 1;
+    }
+
+    edge_id_t begin_id() const
+    {
+        return 0;
+    }
+    edge_id_t end_id() const
+    {
+        return edges.size();
+    }
 };
 
 // Edge indices, assuming we start from g.start and finish at g.end
-using Path = std::vector<int>;
+using Path = std::vector<edge_id_t>;
 
-std::ostream & write_node(std::ostream &os, int n);
+std::ostream &write_vertex(std::ostream &os, int v);
 
 struct Graph {
-    std::vector<Node> nodes;
-    int start, end;             // ‘node_char’s
+    std::vector<Vertex> vertexes;
+    int start, end;             // ‘vertex_char’s
 
     // We don’t assume any particular range of characters. Instead, we
-    // use characters we read as identifiers but only keep nodes in the
-    // character range actually used. ‘base_char’ is the lowest
-    // character used as a node identifier so far.
+    // use characters we read as identifiers but only keep vertexes in
+    // the character range actually used. ‘base_char’ is the lowest
+    // character used as a vertex identifier so far.
     int base_char = -1;
 
-    Graph() :nodes{}, start{-1}, end{-1} {}
+    Graph() :vertexes{}, start{-1}, end{-1} {}
 
-    Node &node(int n) { return nodes[n - base_char]; }
-    const Node &node(int n) const { return nodes[n - base_char]; }
-
-    // node_char: external id of a node
-    int node_char(int idx) const { return idx + base_char; }
-    // node_index: zero-based index of node
-    int node_index(int n) const { return n - base_char; }
-
-    int nodes_count() const { return nodes.size(); }
-
-    Edge &edge(int n, int e) { return node(n).edge(e); }
-    const Edge &edge(int n, int e) const { return node(n).edge(e); }
-    Edge &revedge(int n, int e)
+    Vertex &vertex(int v)
     {
-        Edge &ed = edge(n, e);
-        return edge(ed.dest, ed.rev_idx);
+        return vertexes[v - base_char];
     }
-    const Edge &revedge(int n, int e) const
+    const Vertex &vertex(int v) const
     {
-        const Edge &ed = edge(n, e);
-        return edge(ed.dest, ed.rev_idx);
+        return vertexes[v - base_char];
     }
 
-    void add_node(int n);
+    // vertex_char: external id of a vertex
+    int vertex_char(int idx) const
+    {
+        return idx + base_char;
+    }
+    // vertex_index: zero-based index of vertex
+    int vertex_index(int v) const
+    {
+        return v - base_char;
+    }
 
-    void add_edge(int n1, int n2, int w);
-    void mod_edge(int n, int e, int dw);
+    int vertexes_count() const
+    {
+        return vertexes.size();
+    }
+
+    Edge &edge(int v, edge_id_t e)
+    {
+        return vertex(v).edge(e);
+    }
+    const Edge &edge(int v, edge_id_t e) const
+    {
+        return vertex(v).edge(e);
+    }
+    Edge &revedge(int v, edge_id_t e)
+    {
+        Edge &ed = edge(v, e);
+        return edge(ed.dest, ed.rev);
+    }
+    const Edge &revedge(int v, edge_id_t e) const
+    {
+        const Edge &ed = edge(v, e);
+        return edge(ed.dest, ed.rev);
+    }
+
+    void add_vertex(int v);
+
+    void add_edge(int v1, int v2, int cap);
+    void mod_edge(int v, edge_id_t e, int dcap);
 
     int path_flux(const Path &p) const;
     void apply_flux(const Path &p, int f);
 
     int get_max_flux();
+
+    Path recover_path(const std::vector<edge_id_t> &revs) const;
+    Path find_path() const;
 };
 
 void
-Graph::add_node(int n)
+Graph::add_vertex(int v)
 {
     if (base_char < 0) {
-        // First node
-        base_char = n;
-    } else if (n < base_char) {
-        // Node below lowest char seen before: prepend nodes
-        nodes.insert(nodes.begin(), base_char - n, Node{});
-        base_char = n;
+        // First vertex
+        base_char = v;
+    } else if (v < base_char) {
+        // Vertex below lowest char seen before: prepend vertexs
+        vertexes.insert(vertexes.begin(), base_char - v, Vertex{});
+        base_char = v;
     } else {
-        int idx = n - base_char,
-            cur = nodes_count();
+        int idx = vertex_index(v),
+            cur = vertexes_count();
 
-        // If new char is above every one seen before, append nodes
+        // If new char is above every one seen before, append vertexes
         if (idx >= cur)
-            nodes.insert(nodes.end(), idx - cur + 1, Node{});
+            vertexes.insert(vertexes.end(), idx - cur + 1, Vertex{});
     }
 }
 
 void
-Graph::add_edge(int n1, int n2, int w)
+Graph::add_edge(int v1, int v2, int cap)
 {
-    int e1idx = node(n1).edges_count(),
-        e2idx = node(n2).edges_count();
+    edge_id_t
+        e1 = vertex(v1).add_edge(),
+        e2 = vertex(v2).add_edge();
 
-    // Add 2 interconnected (via dest and rev_idx) edges at once.
-    node(n1).edges.push_back(Edge{n2, w, 0, e2idx});
-    node(n2).edges.push_back(Edge{n1, -w, w, e1idx});
+    // Add 3 interconnected (via dest and rev) edges at once.
+    edge(v1, e1) = Edge{v2, cap, 0, e2};
+    edge(v2, e2) = Edge{v1, -cap, cap, e1};
 
-#ifdef ENABLE_DEBUG
-    write_node(write_node(std::cerr << "add edge: ", n1), n2);
-    write_node(write_node(std::cerr << '/', n2), n1);
-    std::cerr << " weight: " << w << std::endl;
-#endif
+    #ifdef ENABLE_DEBUG
+    write_vertex(write_vertex(std::cerr << "add edge: ", v1), v2);
+    write_vertex(write_vertex(std::cerr << '/', v2), v1);
+    std::cerr << " max capacity: " << cap << std::endl;
+    #endif
 }
 
 void
-Graph::mod_edge(int n, int e, int dw)
+Graph::mod_edge(int v, edge_id_t e, int dcap)
 {
     Edge
-        &e1 = edge(n, e),
-        &e2 = revedge(n, e);
+        &e1 = edge(v, e),
+        &e2 = revedge(v, e);
 
-    e1.current_flux += dw;
-    e2.current_flux -= dw;
+    e1.current_flux += dcap;
+    e2.current_flux -= dcap;
 
-#ifdef ENABLE_DEBUG
+    #ifdef ENABLE_DEBUG
     int d = e1.dest;
-    std::cerr << "modify (by " << dw << ") edges: ";
-    write_node(write_node(std::cerr, n), d)
-        << " (new:" << e1.current_flux << " avail:"
-        << e1.avail() << "), ";
-    write_node(write_node(std::cerr, d), n)
-        << " (new:" << e2.current_flux << " avail:"
-        << e2.avail() << ")" << std::endl;
-#endif
+    std::cerr << "modify (by " << dcap << ") edges: ";
+    write_vertex(write_vertex(std::cerr, v), d)
+        << " (new:" << e1.current_flux << " remaining capacity:"
+        << e1.remaining_capacity() << "), ";
+    write_vertex(write_vertex(std::cerr, d), v)
+        << " (new:" << e2.current_flux << " remaining capacity:"
+        << e2.remaining_capacity() << ")" << std::endl;
+    #endif
 }
 
 int
@@ -146,12 +200,11 @@ Graph::path_flux(const Path &p) const
 {
     int f = INT_MAX;
 
-    // Traverse path, find min available flux
-    int n = start;
+    // Traverse path, find min remaining capacity
+    int v = start;
     auto iter = p.begin();
-    for (; n != end;
-         n = edge(n, *iter++).dest)
-        f = std::min(f, edge(n, *iter).avail());
+    for (; v != end; v = edge(v, *iter++).dest)
+        f = std::min(f, edge(v, *iter).remaining_capacity());
 
     return f;
 }
@@ -160,11 +213,10 @@ Graph::path_flux(const Path &p) const
 void
 Graph::apply_flux(const Path &p, int f)
 {
-    int n = start;
+    int v = start;
     auto iter = p.begin();
-    for (; n != end;
-         n = edge(n, *iter++).dest)
-        mod_edge(n, *iter, f);
+    for (; v != end; v = edge(v, *iter++).dest)
+        mod_edge(v, *iter, f);
 }
 
 std::ostream &
@@ -172,17 +224,14 @@ debug_write_path(const Graph &g,
                  std::ostream &os,
                  const Path &p)
 {
-    int n = g.start;
+    int v = g.start;
     auto iter = p.begin();
-    for (; n != g.end;
-         n = g.edge(n, *iter++).dest)
-        write_node(os, n);
-    write_node(os, n);
+    for (; v != g.end; v = g.edge(v, *iter++).dest)
+        write_vertex(os, v);
+    write_vertex(os, v);
 
     return os;
 }
-
-Path find_path(const Graph &g);
 
 int
 Graph::get_max_flux()
@@ -190,7 +239,7 @@ Graph::get_max_flux()
     int total = 0;
 
     for (;;) {
-        Path p = find_path(*this);
+        Path p = find_path();
         if (p.empty())
             break;
 
@@ -198,11 +247,11 @@ Graph::get_max_flux()
         apply_flux(p, f);
         total += f;
 
-#ifdef ENABLE_DEBUG
+        #ifdef ENABLE_DEBUG
         debug_write_path(*this, std::cerr << "found path: ", p);
         std::cerr << ", flux: " << f << std::endl;
         std::cerr << "current total: " << total << std::endl;
-#endif
+        #endif
     }
 
     return total;
@@ -211,17 +260,16 @@ Graph::get_max_flux()
 
 
 Path
-recover_path(const Graph &g,
-             const std::vector<int> &revs)
+Graph::recover_path(const std::vector<edge_id_t> &revs) const
 {
     Path p {};
 
     // Traverse the path from end to start following recorded reverse
     // edges
-    for (int n = g.end; n != g.start;) {
-        const Edge &e = g.edge(n, revs[g.node_index(n)]);
-        p.push_back(e.rev_idx);
-        n = e.dest;
+    for (int v = end; v != start;) {
+        const Edge &e = edge(v, revs[vertex_index(v)]);
+        p.push_back(e.rev);
+        v = e.dest;
     }
 
     std::reverse(p.begin(), p.end());
@@ -229,114 +277,118 @@ recover_path(const Graph &g,
     return p;
 }
 
-struct EdgeCmpRef {
-    int src;
-    int idx;
-
-    const Edge &edge(const Graph &g) const { return g.edge(src, idx); }
-
-    int dst(const Graph &g) const { return edge(g).dest; }
-    int rev_idx(const Graph &g) const { return edge(g).rev_idx; }
-
-    // std::less<int> / std::greater<int>
-    template<typename C>
-    bool compare(const EdgeCmpRef &o,
-                 const Graph &g,
-                 C cmp) const
-    {
-        int dst1 = dst(g),
-            dst2 = o.dst(g);
-        int diff1 = std::abs(dst1 - src),
-            diff2 = std::abs(dst2 - o.src);
-
-        if (diff1 != diff2)
-            return cmp(diff1, diff2);
-        return cmp(dst1, dst2);
-    }
-};
-
 Path
-find_path(const Graph &g)
+Graph::find_path() const
 {
-    auto edgecmpref_less =
-        [&g](const EdgeCmpRef &a, const EdgeCmpRef &b)
+    // Specifies a particular edge in the graph. Comparison (operator<)
+    // is defined to make the best edge the largest.
+    struct ComparedEdgeRef {
+        // required to calculate distance between dest and source
+        int src;
+
+        // if we have an edge ptr, we don’t need a ref to the graph
+        const Edge *edge;
+
+        int dst() const
         {
-            // std::greater to reverse the std::priority_queue order
-            return a.compare(b, g, std::greater<int>{});
-        };
+            return edge->dest;
+        }
+        edge_id_t rev() const
+        {
+            return edge->rev;
+        }
+
+        bool operator<(const ComparedEdgeRef &o) const
+        {
+            int dst1 = dst(),
+                dst2 = o.dst();
+            int diff1 = std::abs(dst1 - src),
+                diff2 = std::abs(dst2 - o.src);
+
+            // Note: using ‘>’ (greater) here to keep the edge with the
+            // smallest distance or destination vertex id the largest
+            // one.
+            if (diff1 != diff2)
+                return diff1 > diff2;
+
+            // here as well
+            return dst1 > dst2;
+        }
+    };
 
     // We’ll always have the best edge on top
-    std::priority_queue<EdgeCmpRef,
-                        std::vector<EdgeCmpRef>,
-                        decltype(edgecmpref_less)> q {edgecmpref_less};
+    std::priority_queue<ComparedEdgeRef> q {};
 
-    std::vector<bool> visited (g.nodes_count(), false);
+    std::vector<bool> visited (vertexes_count(), false);
 
-    // rev[g.node_index(n)]: which edge of node n we should use to
-    // return to the node from which we came to ‘n’ the first time
-    std::vector<int> rev (g.nodes_count(), -1);
+    // rev[vertex_index(v)]: which edge of vertex v we should use to
+    // return to the vertex from which we came to ‘v’ the first time
+    std::vector<int> rev (vertexes_count(), -1);
 
-    int n = g.start;
-    while (n != g.end) {
-        visited[g.node_index(n)] = true;
+    int v = start;
+    while (v != end) {
+        visited[vertex_index(v)] = true;
 
-        int ec = g.node(n).edges_count();
-        for (int ei = 0; ei < ec; ei++) {
-            const Edge &e = g.edge(n, ei);
-            if (!visited[g.node_index(e.dest)]
-                && e.avail() > 0) {
-                q.push(EdgeCmpRef{n, ei});
+        const Vertex &vv = vertex(v);
+        for (edge_id_t ei = vv.begin_id(); ei != vv.end_id(); ++ei) {
+            const Edge &e = vv.edge(ei);
 
-#ifdef ENABLE_DEBUG
-                write_node(std::cerr << " pushing edge: ", n) << " -> ";
-                write_node(std::cerr, g.edge(n, ei).dest) << std::endl;
-#endif
+            if (!visited[vertex_index(e.dest)]
+                && e.remaining_capacity() > 0) {
+
+                q.push(ComparedEdgeRef{v, &e});
+
+                #ifdef ENABLE_DEBUG
+                write_vertex(std::cerr << " pushing edge: ", v)
+                    << " -> ";
+                write_vertex(std::cerr, edge(v, ei).dest) << std::endl;
+                #endif
             }
         }
 
-        // No more edges but we haven’t seen g.end => no path
+        // No more edges but we haven’t seen end => no path
         if (q.empty())
             return Path{};
 
         // Pick the next edge
-        // n <- next node
+        // v <- next vertex
         // r <- reverse edge
-        int r;
+        edge_id_t r;
         do {
-            const EdgeCmpRef &er = q.top();
+            const ComparedEdgeRef &er = q.top();
 
-            r = er.rev_idx(g);
-            n = er.dst(g);
+            r = er.rev();
+            v = er.dst();
 
             q.pop();
 
-#ifdef ENABLE_DEBUG
-            write_node(std::cerr << " looking at edge: ", er.src);
-            write_node(std::cerr << " -> ", n) << std::endl;
-#endif
-        } while (visited[g.node_index(n)]);
+            #ifdef ENABLE_DEBUG
+            write_vertex(std::cerr << " looking at edge: ", er.src);
+            write_vertex(std::cerr << " -> ", v) << std::endl;
+            #endif
 
-#ifdef ENABLE_DEBUG
-        std::cerr << " ok\n";
-#endif
+        } while (visited[vertex_index(v)]);
 
-        rev[g.node_index(n)] = r;
+        #ifdef ENABLE_DEBUG
+        std::cerr << " ok" << std::endl;
+        #endif
+
+        rev[vertex_index(v)] = r;
     }
 
-    return recover_path(g, rev);
+    return recover_path(rev);
 }
 
 
 
-// Read a node character and make sure it’s valid in the graph
+// Read a vertex character and make sure it’s valid in the graph
 int
-read_node(std::istream &is,
-          Graph &g)
+read_vertex(std::istream &is, Graph &g)
 {
     char c;
     is >> c;
 
-    g.add_node(c);
+    g.add_vertex(c);
 
     return c;
 }
@@ -349,16 +401,17 @@ read_graph(std::istream &is)
     int count;
     is >> count;
 
-    g.start = read_node(is, g);
-    g.end = read_node(is, g);
+    g.start = read_vertex(is, g);
+    g.end = read_vertex(is, g);
 
     for (int i = 0; i < count; i++) {
-        int n1 = read_node(is, g),
-            n2 = read_node(is, g),
-            weight;
-        is >> weight;
+        int v1 = read_vertex(is, g),
+            v2 = read_vertex(is, g);
 
-        g.add_edge(n1, n2, weight);
+        int max_capacity;
+        is >> max_capacity;
+
+        g.add_edge(v1, v2, max_capacity);
     }
 
     return g;
@@ -367,29 +420,29 @@ read_graph(std::istream &is)
 
 
 std::ostream &
-write_node(std::ostream &os, int n)
+write_vertex(std::ostream &os, int v)
 {
-    return os << static_cast<char>(n);
+    return os << static_cast<char>(v);
 }
 
 std::ostream &
 write_edge(std::ostream &os,
-           const Graph &g, int n, int e)
+           const Graph &g, int v, edge_id_t e)
 {
     // Format: "{from} {to} {actual_flux}"
-    const Edge &edge = g.edge(n, e);
-    return write_node(write_node(os, n) << " ", edge.dest)
+    const Edge &edge = g.edge(v, e);
+    return write_vertex(write_vertex(os, v) << " ", edge.dest)
         << " " << edge.current_flux << std::endl;
 }
 
-// Write edges sorted by destination node character
+// Write edges sorted by destination vertex character
 std::ostream &
-write_node_edges(std::ostream &os,
-                 const Graph &g, int n)
+write_vertex_edges(std::ostream &os,
+                   const Graph &g, int v)
 {
     struct EdgeRef {
         int dest;
-        int idx;
+        edge_id_t ei;
 
         bool operator<(const EdgeRef &er) const
         {
@@ -398,29 +451,28 @@ write_node_edges(std::ostream &os,
     };
     std::vector<EdgeRef> ers {};
 
-    int c = g.node(n).edges_count();
-    for (int i = 0; i < c; i++) {
-        const Edge &edge = g.edge(n, i);
-        if (edge.real())
-            ers.push_back(EdgeRef{edge.dest, i});
+    const Vertex &vv = g.vertex(v);
+    for (edge_id_t ei = vv.begin_id(); ei != vv.end_id(); ++ei) {
+        const Edge &edge = vv.edge(ei);
+        if (edge.is_real())
+            ers.push_back(EdgeRef{edge.dest, ei});
     }
 
     std::sort(ers.begin(), ers.end());
 
     for (const EdgeRef &er : ers)
-        write_edge(os, g, n, er.idx);
+        write_edge(os, g, v, er.ei);
 
     return os;
 }
 
 std::ostream &
-write_flux(std::ostream &os,
-           const Graph &g)
+write_flux(std::ostream &os, const Graph &g)
 {
-    // Note: we iterate over node indices, so we use g.node_char
-    int c = g.nodes_count();
+    // Note: we iterate over vertex indices, so we use g.vertex_char
+    int c = g.vertexes_count();
     for (int i = 0; i < c; i++)
-        write_node_edges(os, g, g.node_char(i));
+        write_vertex_edges(os, g, g.vertex_char(i));
     return os;
 }
 
