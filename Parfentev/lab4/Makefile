@@ -15,6 +15,8 @@ $(SRCDIR)/rotation/rotation: $(SRCDIR)/rotation/rotation.go
 test: all
 	./test.sh $(SRCDIR)/search/search $(TESTDIR)/search
 	./test.sh $(SRCDIR)/rotation/rotation $(TESTDIR)/rotation
+	./test.sh $(SRCDIR)/search/search $(TESTDIR)/search -j 4
+	./test.sh $(SRCDIR)/rotation/rotation $(TESTDIR)/rotation -j 4
 
 clean:
 	$(RM) $(EXEFILES)
