@@ -21,14 +21,39 @@ var verbose bool
 // c: character/byte at the current position
 // i: first index in ‘n’ in ‘c’ with
 func prefixAt(n string, np []int, c byte, i int) int {
+	if verbose {
+		fmt.Fprintf(os.Stderr, "\tLooking for: '%c'\n", c)
+	}
 	for {
+		if verbose {
+			if i >= len(n) {
+				fmt.Fprintf(os.Stderr, "\tOut of bounds\n")
+			} else {
+				fmt.Fprintf(os.Stderr,
+					"\tCurrent char: '%c'\n", n[i])
+			}
+		}
+
 		switch {
 		case i < len(n) && c == n[i]:
+			if verbose {
+				fmt.Fprintf(os.Stderr,
+					"\tMatching char at %d\n", i)
+			}
+
 			return i + 1
 		case i == 0:
+			if verbose {
+				fmt.Fprintf(os.Stderr, "\tNo match\n")
+			}
+
 			return 0
 		}
 		i = np[i - 1]
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "\tFalling back to %d\n", i)
+		}
 	}
 }
 
@@ -39,8 +64,22 @@ func prefix(s string) []int {
 	}
 	prefix := make([]int, len(s))
 	prefix[0] = 0
+	if verbose {
+		fmt.Fprintf(os.Stderr, "At 0: 0 (automatically)\n")
+	}
 	for i := 1; i < len(s); i++ {
-		prefix[i] = prefixAt(s, prefix, s[i], prefix[i - 1])
+		start := prefix[i - 1]
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "At %d:\n", i)
+			fmt.Fprintf(os.Stderr, "\tStarting at %d\n", start)
+		}
+
+		prefix[i] = prefixAt(s, prefix, s[i], start)
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "At %d: %d\n", i, prefix[i])
+		}
 	}
 	return prefix
 }
@@ -61,8 +100,14 @@ func findMatches(
 	prev := initial
 	n := len(needle)
 	for i := 0; i < len(haystack); i++ {
-		prev = prefixAt(needle, n_prefix, haystack[i], prev)
 		real_idx := offset + i
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "At %d:\n", real_idx)
+			fmt.Fprintf(os.Stderr, "\tPrev = %d\n", prev)
+		}
+
+		prev = prefixAt(needle, n_prefix, haystack[i], prev)
 
 		if verbose {
 			fmt.Fprintf(os.Stderr, "At %d: %d\n", real_idx, prev)
@@ -87,14 +132,31 @@ func findMatches(
 func findCyclicMatch(hd, tl, orig string, orig_prefix []int) int {
 	n := len(orig)
 
+	if verbose {
+		fmt.Fprintf(os.Stderr, "Running findMatches in the tail...\n")
+	}
+
 	_, last := findMatches(hd, orig, orig_prefix, 0, 0)
 	switch last {
 	case n:
+		if verbose {
+			fmt.Fprintf(os.Stderr,
+				"Full match with tail -> strings are equal\n")
+		}
 		return 0
 	case 0:
+		if verbose {
+			fmt.Fprintf(os.Stderr,
+				"No partial match, no need to check further\n")
+		}
 		return -1
 	}
 
+	if verbose {
+		fmt.Fprintf(os.Stderr,
+			"Running findMatches in the head with prev=%d...\n",
+			last)
+	}
 	matches, _ := findMatches(tl, orig, orig_prefix, last, n)
 	if len(matches) != 0 {
 		return matches[0]
@@ -150,7 +212,17 @@ func splitKmpWork(len_s, len_substr, n_ranges int) []Range {
 
 func ParallelCheckCyclic(str, orig string, n_pieces int) int {
 	if (len(str) != len(orig)) {
+		if verbose {
+			fmt.Fprintf(os.Stderr,
+				"Strings of different lengths; quitting\n")
+		}
+
 		return -1
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr,
+			"Calculating prefix function of original string...\n")
 	}
 
 	orig_prefix := prefix(orig)
@@ -171,6 +243,11 @@ func ParallelCheckCyclic(str, orig string, n_pieces int) int {
 		end := offset + rng.length - n
 
 		go func () {
+			if verbose {
+				fmt.Fprintf(os.Stderr,
+					"findCyclicMatch from %d...\n", offset)
+			}
+
 			rot := findCyclicMatch(
 				str[offset:], str[:end],
 				orig, orig_prefix,

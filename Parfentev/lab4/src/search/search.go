@@ -21,14 +21,39 @@ var verbose bool
 // c: character/byte at the current position
 // i: first index in ‘n’ in ‘c’ with
 func prefixAt(n string, np []int, c byte, i int) int {
+	if verbose {
+		fmt.Fprintf(os.Stderr, "\tLooking for: '%c'\n", c)
+	}
 	for {
+		if verbose {
+			if i >= len(n) {
+				fmt.Fprintf(os.Stderr, "\tOut of bounds\n")
+			} else {
+				fmt.Fprintf(os.Stderr,
+					"\tCurrent char: '%c'\n", n[i])
+			}
+		}
+
 		switch {
 		case i < len(n) && c == n[i]:
+			if verbose {
+				fmt.Fprintf(os.Stderr,
+					"\tMatching char at %d\n", i)
+			}
+
 			return i + 1
 		case i == 0:
+			if verbose {
+				fmt.Fprintf(os.Stderr, "\tNo match\n")
+			}
+
 			return 0
 		}
 		i = np[i - 1]
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "\tFalling back to %d\n", i)
+		}
 	}
 }
 
@@ -39,8 +64,22 @@ func prefix(s string) []int {
 	}
 	prefix := make([]int, len(s))
 	prefix[0] = 0
+	if verbose {
+		fmt.Fprintf(os.Stderr, "At 0: 0 (automatically)\n")
+	}
 	for i := 1; i < len(s); i++ {
-		prefix[i] = prefixAt(s, prefix, s[i], prefix[i - 1])
+		start := prefix[i - 1]
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "At %d:\n", i)
+			fmt.Fprintf(os.Stderr, "\tStarting at %d\n", start)
+		}
+
+		prefix[i] = prefixAt(s, prefix, s[i], start)
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "At %d: %d\n", i, prefix[i])
+		}
 	}
 	return prefix
 }
@@ -61,8 +100,14 @@ func findMatches(
 	prev := initial
 	n := len(needle)
 	for i := 0; i < len(haystack); i++ {
-		prev = prefixAt(needle, n_prefix, haystack[i], prev)
 		real_idx := offset + i
+
+		if verbose {
+			fmt.Fprintf(os.Stderr, "At %d:\n", real_idx)
+			fmt.Fprintf(os.Stderr, "\tPrev = %d\n", prev)
+		}
+
+		prev = prefixAt(needle, n_prefix, haystack[i], prev)
 
 		if verbose {
 			fmt.Fprintf(os.Stderr, "At %d: %d\n", real_idx, prev)
@@ -185,11 +230,16 @@ func parallelFindMatches(
 }
 
 func ParallelSearchSubstring(haystack, needle string, n_ranges int) []int {
+	if verbose {
+		fmt.Fprintf(os.Stderr,
+			"Calculating prefix function of search pattern...\n")
+	}
+
 	n_prefix := prefix(needle)
 
 	if verbose {
-		fmt.Fprintf(os.Stderr, "Prefix function of needle: %v\n",
-			n_prefix)
+		fmt.Fprintf(os.Stderr,
+			"Prefix function of search pattern: %v\n", n_prefix)
 	}
 
 	ranges := splitKmpWork(len(haystack), len(needle), n_ranges)
