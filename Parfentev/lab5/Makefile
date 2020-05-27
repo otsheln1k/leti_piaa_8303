@@ -6,10 +6,6 @@ OBJFILES = $(addsuffix .o,$(EXEFILES))
 
 all: $(EXEFILES)
 
-test: $(EXEFILES)
-	./test.sh $(SRCDIR)/aho-corasick $(TESTDIR)/aho-corasick
-	./test.sh $(SRCDIR)/wildcard $(TESTDIR)/wildcard
-
 debug: all
 debug: CXXFLAGS += -DENABLE_DEBUG -g -Wall -Wextra
 
