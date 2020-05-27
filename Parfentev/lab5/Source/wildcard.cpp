@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stack>
 #include <algorithm>
+#include <map>
 
 
 struct Result {
@@ -25,6 +26,29 @@ struct State {
     Result *results = nullptr;
     Result **results_back {&results};
 };
+
+#ifdef ENABLE_DEBUG
+std::ostream &
+operator<<(std::ostream &os, State *stt)
+{
+    static std::map<State *, int> state_ids {};
+    static int next_state_id = 0;
+
+    if (!stt) {
+        return os << "(null)";
+    }
+
+    auto iter = state_ids.find(stt);
+    int id;
+    if (iter == state_ids.end()) {
+        id = state_ids[stt] = next_state_id++;
+    } else {
+        id = iter->second;
+    }
+
+    return os << id;
+}
+#endif
 
 void
 addResult(State *stt, size_t pat_idx, size_t length)
